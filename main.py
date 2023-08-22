@@ -32,7 +32,7 @@ class Note:
     sharp: bool = False
 
     @classmethod
-    def parse(cls, note_data: t.Dict) -> "Note":
+    def parse(cls, note_data: t.Dict, time_signature_lower: int) -> "Note":
         value = note_data["pitch"]["step"]
         high = note_data["pitch"]["octave"] == "5" and value != "C"
         duration = int(note_data["duration"]) / 96
@@ -67,13 +67,17 @@ class Tune:
             count = 0
             for note in measure.notes:
                 length = note.duration + 0.5 if note.dotted else note.duration
-                # Account for polkas, we never really have 2/4 time
+                mid_point = (
+                    self.time_signature.upper
+                    if self.time_signature.lower <= 4
+                    else int(self.time_signature.upper / 2)
+                )
                 if (
                     count > 0
-                    and count <= max(self.time_signature.upper / 2, 2)
-                    and count + length > max(self.time_signature.upper / 2, 2)
+                    and count <= mid_point
+                    and count + length > mid_point
                 ):
-                    tune_str += "  "
+                    tune_str += " "
                 count += length
                 tune_str += note.value
                 if note.high:
@@ -82,6 +86,7 @@ class Tune:
                     tune_str += "- "
             if int(measure.number) < len(self.measures):
                 tune_str += " | "
+        tune_str = tune_str.replace("  ", " ")
         return tune_str
 
 
@@ -111,7 +116,7 @@ def main(file: str) -> None:
         notes = []
         for note_data in measure["note"]:
             if type(note_data) == dict:
-                notes.append(Note.parse(note_data))
+                notes.append(Note.parse(note_data, time_signature.lower))
         measures.append(Measure(number=number, notes=notes, ending=ending_num))
 
     tune = Tune(time_signature=time_signature, measures=measures)
