@@ -1,5 +1,6 @@
 #!/usr/bin/python3.11
 
+import json
 import xmltodict
 import dataclasses
 import typing as t
@@ -51,6 +52,9 @@ class Measure:
     number: int
     notes: t.List[Note] = dataclasses.field(default_factory=list)
     ending: int = 0
+    part: int = 0
+    part_ending: bool = False
+    repeat: bool = False
 
 
 @dataclasses.dataclass
@@ -84,7 +88,11 @@ class Tune:
                     tune_str += "'"
                 if length > 1:
                     tune_str += "- "
-            if int(measure.number) < len(self.measures):
+            if measure.part_ending:
+                tune_str += " ||\n"
+            elif measure.repeat:
+                tune_str += ' :| '
+            elif int(measure.number) < len(self.measures):
                 tune_str += " | "
         tune_str = tune_str.replace("  ", " ")
         return tune_str
@@ -97,30 +105,43 @@ def main(file: str) -> None:
         dct = xmltodict.parse(f.read())
 
     parts = dct["score-partwise"]["part"]
-    if type(parts) == dict:
+    if type(parts) is dict:
         measure_data = parts["measure"]
     else:
         measure_data = parts[0]["measure"]
 
     time_signature = TimeSignature.parse(measure_data[0])
     measures = []
+    part = 1
     for measure in measure_data:
         ending_num = 0
+        part_ending = False
+        repeat = False
         for barline in measure.get("barline", []):
-            if type(barline) != dict:
+            if type(barline) is not dict:
                 continue
-            if not barline.get("ending", {}).get("@type", "") == "start":
-                continue
-            ending_num = int(barline["ending"]["@number"])
+            if barline['@location'] == 'right':
+                if barline['bar-style'] == 'light-light':
+                    part_ending = True
+                elif barline['repeat']['@direction'] == 'backward':
+                    repeat = True
+            elif barline.get("ending", {}).get("@type", "") == "start":
+                ending_num = int(barline["ending"]["@number"])
         number = measure["@number"]
         notes = []
         for note_data in measure["note"]:
-            if type(note_data) == dict:
+            if type(note_data) is dict:
                 notes.append(Note.parse(note_data, time_signature.lower))
-        measures.append(Measure(number=number, notes=notes, ending=ending_num))
+        measures.append(Measure(number=number, notes=notes,
+                        ending=ending_num, part=part,
+                                part_ending=part_ending, repeat=repeat))
+        if part_ending:
+            part += 1
 
     tune = Tune(time_signature=time_signature, measures=measures)
     tune_str = tune.as_str()
+    with open("/tmp/measure_data", "w") as f:
+        f.write(json.dumps(measure_data, indent=2))
     print(tune_str)
 
 
