@@ -27,18 +27,24 @@ class TimeSignature:
 class Note:
     value: str
     high: bool
+    low: bool
     duration: float
     dotted: bool
     flat: bool = False
     sharp: bool = False
 
     @classmethod
-    def parse(cls, note_data: t.Dict, time_signature_lower: int) -> "Note":
+    def parse(cls, note_data: t.Dict) -> "Note":
         value = note_data["pitch"]["step"]
-        high = note_data["pitch"]["octave"] == "5" and value != "C"
+        if value == "C":
+            high = note_data["pitch"]["octave"] == "6"
+            low = note_data["pitch"]["octave"] == "4"
+        else:
+            high = note_data["pitch"]["octave"] == "5"
+            low = note_data["pitch"]["octave"] == "3"
         duration = int(note_data["duration"]) / 96
         dotted = "dot" in note_data.keys()
-        note = Note(value, high, duration, dotted)
+        note = Note(value, high, low, duration, dotted)
         if alter := note_data["pitch"].get("alter", None):
             if alter == -1:
                 note.flat = True
@@ -76,22 +82,20 @@ class Tune:
                     if self.time_signature.lower <= 4
                     else int(self.time_signature.upper / 2)
                 )
-                if (
-                    count > 0
-                    and count <= mid_point
-                    and count + length > mid_point
-                ):
+                if count > 0 and count <= mid_point and count + length > mid_point:
                     tune_str += " "
                 count += length
                 tune_str += note.value
                 if note.high:
                     tune_str += "'"
+                if note.low:
+                    tune_str += ","
                 if length > 1:
                     tune_str += "- "
             if measure.part_ending:
                 tune_str += " ||\n"
             elif measure.repeat:
-                tune_str += ' :| '
+                tune_str += " :| "
             elif int(measure.number) < len(self.measures):
                 tune_str += " | "
         tune_str = tune_str.replace("  ", " ")
@@ -120,10 +124,10 @@ def main(file: str) -> None:
         for barline in measure.get("barline", []):
             if type(barline) is not dict:
                 continue
-            if barline['@location'] == 'right':
-                if barline['bar-style'] == 'light-light':
+            if barline["@location"] == "right":
+                if barline["bar-style"] == "light-light":
                     part_ending = True
-                elif barline['repeat']['@direction'] == 'backward':
+                elif barline["repeat"]["@direction"] == "backward":
                     repeat = True
             elif barline.get("ending", {}).get("@type", "") == "start":
                 ending_num = int(barline["ending"]["@number"])
@@ -131,10 +135,17 @@ def main(file: str) -> None:
         notes = []
         for note_data in measure["note"]:
             if type(note_data) is dict:
-                notes.append(Note.parse(note_data, time_signature.lower))
-        measures.append(Measure(number=number, notes=notes,
-                        ending=ending_num, part=part,
-                                part_ending=part_ending, repeat=repeat))
+                notes.append(Note.parse(note_data))
+        measures.append(
+            Measure(
+                number=number,
+                notes=notes,
+                ending=ending_num,
+                part=part,
+                part_ending=part_ending,
+                repeat=repeat,
+            )
+        )
         if part_ending:
             part += 1
 
