@@ -1,13 +1,33 @@
-#!/usr/bin/python3.11
+#!/usr/bin/python3
 
 import json
 import xmltodict
 import dataclasses
 import typing as t
 import click
+from enum import Enum
+from consts import KEY_NAMES
 
-FLAT: str = "♭"
-SHARP: str = "♯"
+
+class Mode(Enum):
+    MAJOR = 0
+    MINOR = 1
+
+
+@dataclasses.dataclass
+class Key:
+    fifths: int
+    mode: Mode
+
+    def as_str(self) -> str:
+        return KEY_NAMES[(self.fifths, self.mode.name.lower())]
+
+    @classmethod
+    def parse(cls, measure_data: t.Dict) -> "Key":
+        key_data = measure_data["attributes"]["key"]
+        fifths = key_data["fifths"]
+        mode = key_data["mode"]
+        return Key(int(fifths), getattr(Mode, mode.upper()))
 
 
 @dataclasses.dataclass
@@ -21,6 +41,9 @@ class TimeSignature:
         upper = int(time_data["beats"])
         lower = int(time_data["beat-type"])
         return TimeSignature(upper, lower)
+
+    def as_str(self) -> str:
+        return f"{self.upper}/{self.lower}"
 
 
 @dataclasses.dataclass
@@ -66,10 +89,13 @@ class Measure:
 @dataclasses.dataclass
 class Tune:
     time_signature: TimeSignature
+    key: Key
     measures: t.List[Measure]
 
     def as_str(self) -> str:
         tune_str: str = ""
+        tune_str += f"Time Signature: {self.time_signature.as_str()}\n"
+        tune_str += f"Key: {self.key.as_str()}\n"
         count: float = 0
         for measure in self.measures:
             if ending := measure.ending:
@@ -115,6 +141,7 @@ def main(file: str) -> None:
         measure_data = parts[0]["measure"]
 
     time_signature = TimeSignature.parse(measure_data[0])
+    key = Key.parse(measure_data[0])
     measures = []
     part = 1
     for measure in measure_data:
@@ -149,7 +176,7 @@ def main(file: str) -> None:
         if part_ending:
             part += 1
 
-    tune = Tune(time_signature=time_signature, measures=measures)
+    tune = Tune(time_signature=time_signature, key=key, measures=measures)
     tune_str = tune.as_str()
     with open("/tmp/measure_data", "w") as f:
         f.write(json.dumps(measure_data, indent=2))
