@@ -22,6 +22,9 @@ class Key:
     def as_str(self) -> str:
         return KEY_NAMES[(self.fifths, self.mode.name.lower())]
 
+    def print(self) -> str:
+        return f"Key: {self.as_str()}\n"
+
     @classmethod
     def parse(cls, measure_data: t.Dict) -> "Key":
         key_data = measure_data["attributes"]["key"]
@@ -44,6 +47,9 @@ class TimeSignature:
 
     def as_str(self) -> str:
         return f"{self.upper}/{self.lower}"
+
+    def print(self) -> str:
+        return f"Time Signature: {self.as_str()}\n"
 
 
 @dataclasses.dataclass
@@ -85,6 +91,32 @@ class Measure:
     part_ending: bool = False
     repeat: bool = False
 
+    def as_str(self, ts: TimeSignature, num_measures: int) -> str:
+        measure_str = ""
+        if ending := self.ending:
+            measure_str += f"{ending}) "
+        count = 0
+        for note in self.notes:
+            length = note.duration + 0.5 if note.dotted else note.duration
+            mid_point = ts.upper if ts.lower <= 4 else int(ts.upper / 2)
+            if count > 0 and count <= mid_point and count + length > mid_point:
+                measure_str += " "
+            count += length
+            measure_str += note.value
+            if note.high:
+                measure_str += "'"
+            if note.low:
+                measure_str += ","
+            if length > 1:
+                measure_str += "- "
+        if self.part_ending:
+            measure_str += " ‖\n"
+        elif self.repeat:
+            measure_str += " :| "
+        elif int(self.number) < num_measures:
+            measure_str += " | "
+        return measure_str
+
 
 @dataclasses.dataclass
 class Tune:
@@ -94,36 +126,10 @@ class Tune:
 
     def as_str(self) -> str:
         tune_str: str = ""
-        tune_str += f"Time Signature: {self.time_signature.as_str()}\n"
-        tune_str += f"Key: {self.key.as_str()}\n"
-        count: float = 0
+        tune_str += self.time_signature.print()
+        tune_str += self.key.print()
         for measure in self.measures:
-            if ending := measure.ending:
-                tune_str += f"{ending}) "
-            count = 0
-            for note in measure.notes:
-                length = note.duration + 0.5 if note.dotted else note.duration
-                mid_point = (
-                    self.time_signature.upper
-                    if self.time_signature.lower <= 4
-                    else int(self.time_signature.upper / 2)
-                )
-                if count > 0 and count <= mid_point and count + length > mid_point:
-                    tune_str += " "
-                count += length
-                tune_str += note.value
-                if note.high:
-                    tune_str += "'"
-                if note.low:
-                    tune_str += ","
-                if length > 1:
-                    tune_str += "- "
-            if measure.part_ending:
-                tune_str += " ||\n"
-            elif measure.repeat:
-                tune_str += " :| "
-            elif int(measure.number) < len(self.measures):
-                tune_str += " | "
+            tune_str += measure.as_str(self.time_signature, len(self.measures))
         tune_str = tune_str.replace("  ", " ")
         return tune_str
 
