@@ -91,6 +91,38 @@ class Measure:
     part_ending: bool = False
     repeat: bool = False
 
+    @classmethod
+    def parse(cls, measure: t.Dict[str, str], part: int) -> t.Tuple["Measure", bool]:
+        ending_num = 0
+        part_ending = False
+        repeat = False
+        for barline in measure.get("barline", []):
+            if type(barline) is not dict:
+                continue
+            if barline["@location"] == "right":
+                if barline["bar-style"] == "light-light":
+                    part_ending = True
+                elif barline["repeat"]["@direction"] == "backward":
+                    repeat = True
+            elif barline.get("ending", {}).get("@type", "") == "start":
+                ending_num = int(barline["ending"]["@number"])
+        number = measure["@number"]
+        notes = []
+        for note_data in measure["note"]:
+            if type(note_data) is dict:
+                notes.append(Note.parse(note_data))
+        return (
+            Measure(
+                number=int(number),
+                notes=notes,
+                ending=ending_num,
+                part=part,
+                part_ending=part_ending,
+                repeat=repeat,
+            ),
+            part_ending,
+        )
+
     def as_str(self, ts: TimeSignature, num_measures: int) -> str:
         measure_str = ""
         if ending := self.ending:
@@ -151,36 +183,10 @@ def main(file: str) -> None:
     measures = []
     part = 1
     for measure in measure_data:
-        ending_num = 0
-        part_ending = False
-        repeat = False
-        for barline in measure.get("barline", []):
-            if type(barline) is not dict:
-                continue
-            if barline["@location"] == "right":
-                if barline["bar-style"] == "light-light":
-                    part_ending = True
-                elif barline["repeat"]["@direction"] == "backward":
-                    repeat = True
-            elif barline.get("ending", {}).get("@type", "") == "start":
-                ending_num = int(barline["ending"]["@number"])
-        number = measure["@number"]
-        notes = []
-        for note_data in measure["note"]:
-            if type(note_data) is dict:
-                notes.append(Note.parse(note_data))
-        measures.append(
-            Measure(
-                number=number,
-                notes=notes,
-                ending=ending_num,
-                part=part,
-                part_ending=part_ending,
-                repeat=repeat,
-            )
-        )
+        measure_obj, part_ending = Measure.parse(measure, part)
         if part_ending:
             part += 1
+        measures.append(measure_obj)
 
     tune = Tune(time_signature=time_signature, key=key, measures=measures)
     tune_str = tune.as_str()
